@@ -2114,8 +2114,8 @@ cdef class INFO(object):
             ret = bcf_update_info_flag(self.hdr, self.b, to_bytes(key), b"", int(value))
             if ret != 0:
                 raise Exception("not able to set: %s -> %s (%d)" % (key, value, ret))
-
             return
+
         cdef int32_t iint
         cdef float ifloat
         if isinstance(value, int):
@@ -2124,8 +2124,28 @@ cdef class INFO(object):
         elif isinstance(value, float):
             ifloat = value
             ret = bcf_update_info_float(self.hdr, self.b, to_bytes(key), &ifloat, 1)
-        else:
+        elif isinstance(value, str) or isinstance(value, bytes):
             ret = bcf_update_info_string(self.hdr, self.b, to_bytes(key), to_bytes(value))
+        elif isinstance(value, tuple):
+            cdef uint64_t size = len(value)
+            # FIXME: we use static buffer allocations of size 128 below, which
+            # should be heaps for every use case. If someone complains, we
+            # might need to use malloc/free, but for now that seems more hassle
+            # than it's worth.
+            if size > 128:
+                raise Exception("Tuple too long to set item")
+            if isinstance(value[0], int):
+                cdef int32_t *buf[128]
+                for i, x in enumerate(value):
+                    buf[i] = x
+                ret = bcf_update_info_int32(self.hdr, self.b, to_bytes(key), buf, size)
+            elif isinstance(value[0], float):
+                cdef double *buf[128]
+                for i, x in enumerate(value):
+                    buf[i] = x
+                ret = bcf_update_info_float(self.hdr, self.b, to_bytes(key), buf, size)
+            else:
+                raise Exception("Non-numeric tuples not supported")
         if ret != 0:
             raise Exception("not able to set: %s -> %s (%d)", key, value, ret)
 
